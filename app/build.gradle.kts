@@ -48,6 +48,11 @@ dependencies {
    // implementation 'com.karumi:dexter:6.0.1'
     implementation(libs.service.location)
     implementation(libs.karumi.dexter)
+    implementation(libs.rerofit)
+   implementation(libs.retrofit.gson)
+
+    //implementation 'com.squareup.retrofit2:retrofit:2.6.2'
+    //implementation 'com.squareup.retrofit:converter-gson:2.0.0-beta2'
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

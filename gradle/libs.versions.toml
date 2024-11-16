@@ -11,6 +11,8 @@ activity = "1.9.3"
 constraintlayout = "2.2.0"
 servicelocation = "17.0.0"
 dexter = "6.0.1"
+retrofit = "2.6.2"
+retrofitgson = "2.0.0-beta2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -23,6 +25,8 @@ androidx-activity = { group = "androidx.activity", name = "activity", version.re
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 service-location =  { group = "com.google.android.gms", name = "play-services-location", version.ref = "servicelocation" }
 karumi-dexter =   { group = "com.karumi", name = "dexter", version.ref = "dexter" }
+rerofit =   { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-gson =   { group = "com.squareup.retrofit", name = "converter-gson", version.ref = "retrofitgson" }
 
 
 [plugins]

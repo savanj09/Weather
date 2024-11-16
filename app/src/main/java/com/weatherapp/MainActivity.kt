@@ -28,6 +28,14 @@ import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
 import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
+import com.weatherapp.models.WeatherResponse
+import com.weatherapp.network.WeatherService
+import retrofit.Call
+import retrofit.Callback
+import retrofit.GsonConverterFactory
+import retrofit.Response
+import retrofit.Retrofit
+import kotlin.math.log
 
 
 class MainActivity : AppCompatActivity() {
@@ -86,6 +94,66 @@ class MainActivity : AppCompatActivity() {
 
         return  locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
+
+    private fun getLocationDetails(latitude:Double,longitude:Double){
+        if (Constants.isNetworkAvailable(this)){
+
+           val retrofit: Retrofit = Retrofit.Builder()
+                                .baseUrl(Constants.BASE_URL)
+                                .addConverterFactory(GsonConverterFactory.create()).build()
+
+           val service:WeatherService = retrofit.
+                   create<WeatherService>(WeatherService::class.java)
+
+           val listCall: Call<WeatherResponse> = service.getWeather(
+               latitude, longitude, Constants.METRIC_UNIT,Constants.APP_ID
+           )
+
+            listCall.enqueue(object : Callback<WeatherResponse>{
+                override fun onResponse(response: Response<WeatherResponse>?, retrofit: Retrofit?) {
+                    if (response!!.isSuccess){
+                        val weatherList:WeatherResponse = response.body()
+                        Log.i("Response Result","$weatherList")
+                    }
+                    else{
+                        val rc = response.code()
+                        when(rc){
+                            400 -> {
+                                Log.e("Error 400", "Bad Connection")
+
+                            }
+                            404 -> {
+                                Log.e("Error 404", "Not Found")
+
+                            }
+                           else ->{
+                               Log.e("Error", "Generic Error")
+                           }
+                        }
+                    }
+                }
+
+                override fun onFailure(t: Throwable?) {
+                    Log.e("Error", t!!.message.toString())
+                }
+
+            })
+
+         /*   Toast.makeText(
+                this@MainActivity,
+                "You have connected to the internet. Now you can make an api call",
+                Toast.LENGTH_SHORT
+            ).show()*/
+        }
+
+        else {
+            Toast.makeText(
+                this@MainActivity,
+                "No internet connection available.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
     private fun showRationalDialogForPermissions() {
         AlertDialog.Builder(this)
             .setMessage("It Looks like you have turned off permissions required for this feature. It can be enabled under Application Settings")
@@ -117,7 +185,6 @@ class MainActivity : AppCompatActivity() {
             Looper.myLooper()
         )
     }
-
     private val mLocationCallback = object :LocationCallback(){
         override fun onLocationResult(locationresult: LocationResult) {
             val mLastLocation : Location = locationresult.lastLocation
@@ -126,7 +193,10 @@ class MainActivity : AppCompatActivity() {
             val longitude = mLastLocation.longitude
             Log.e("Current Longitude", "$longitude")
             //super.onLocationResult(locationresult)
+
+            getLocationDetails(latitude,longitude)
         }
 
     }
+
 }
