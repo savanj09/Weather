@@ -1,22 +1,24 @@
 package com.weatherapp
 
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Dialog
-import android.app.ProgressDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.location.Location
 import android.location.LocationManager
-
-
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
+import androidx.appcompat.app.ActionBar
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -24,8 +26,8 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.gson.Gson
 import com.karumi.dexter.Dexter
-import com.karumi.dexter.DexterBuilder.MultiPermissionListener
 import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
 import com.karumi.dexter.listener.PermissionRequest
@@ -51,12 +53,24 @@ class MainActivity : AppCompatActivity() {
 
     private var binding : ActivityMainBinding? =null
 
+    // A global variable for Current Latitude
+    private var mLatitude: Double = 0.0
+    // A global variable for Current Longitude
+    private var mLongitude: Double = 0.0
+
+    private lateinit var mSharedPreferences: SharedPreferences
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
+        //setContentView(R.layout.activity_main)
+       binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding?.root)
 
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        mSharedPreferences = getSharedPreferences(Constants.PREFERENCE_NAME,Context.MODE_PRIVATE)
+
+        setUpUI()
 
         if (!isLocationEnabled()){
             Toast.makeText(this,"Your location provider is turned off.Please turn it",Toast.LENGTH_LONG).show()
@@ -99,7 +113,21 @@ class MainActivity : AppCompatActivity() {
         }
 
     }
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
 
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {0
+        return when (item.itemId) {
+            R.id.action_refresh -> {
+                getLocationDetails()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
     private fun isLocationEnabled():Boolean{
 
         val locationManager:LocationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -107,87 +135,6 @@ class MainActivity : AppCompatActivity() {
         return  locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
 
-
-    private fun showCustomProgressDialog(){
-
-        mProgressDialog = Dialog(this)
-        mProgressDialog!!.setContentView(R.layout.dialog_custom_progress)
-        mProgressDialog!!.show()
-
-    }
-
-    private fun hideProgressDialog(){
-        if (mProgressDialog!=null){
-
-            mProgressDialog!!.dismiss()
-        }
-    }
-
-    private fun getLocationDetails(latitude:Double,longitude:Double){
-        if (Constants.isNetworkAvailable(this)){
-
-           val retrofit: Retrofit = Retrofit.Builder()
-                                .baseUrl(Constants.BASE_URL)
-                                .addConverterFactory(GsonConverterFactory.create()).build()
-
-           val service:WeatherService = retrofit.
-                   create<WeatherService>(WeatherService::class.java)
-
-           val listCall: Call<WeatherResponse> = service.getWeather(
-               latitude, longitude, Constants.METRIC_UNIT,Constants.APP_ID
-           )
-
-            showCustomProgressDialog()
-
-            listCall.enqueue(object : Callback<WeatherResponse>{
-                override fun onResponse(response: Response<WeatherResponse>?, retrofit: Retrofit?) {
-                    if (response!!.isSuccess){
-
-                        hideProgressDialog()
-                        val weatherList:WeatherResponse = response.body()
-                        setUpUI(weatherList)
-                        Log.i("Response Result","$weatherList")
-                    }
-                    else{
-                        val rc = response.code()
-                        when(rc){
-                            400 -> {
-                                Log.e("Error 400", "Bad Connection")
-
-                            }
-                            404 -> {
-                                Log.e("Error 404", "Not Found")
-
-                            }
-                           else ->{
-                               Log.e("Error", "Generic Error")
-                           }
-                        }
-                    }
-                }
-
-                override fun onFailure(t: Throwable?) {
-                    Log.e("Error", t!!.message.toString())
-                    hideProgressDialog()
-                }
-
-            })
-
-         /*   Toast.makeText(
-                this@MainActivity,
-                "You have connected to the internet. Now you can make an api call",
-                Toast.LENGTH_SHORT
-            ).show()*/
-        }
-
-        else {
-            Toast.makeText(
-                this@MainActivity,
-                "No internet connection available.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
     private fun showRationalDialogForPermissions() {
         AlertDialog.Builder(this)
             .setMessage("It Looks like you have turned off permissions required for this feature. It can be enabled under Application Settings")
@@ -208,7 +155,6 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
             }.show()
     }
-
     @SuppressLint("MissingPermission")
     private fun requestLocationData(){
         val mLocationRequest = LocationRequest()
@@ -222,55 +168,146 @@ class MainActivity : AppCompatActivity() {
     private val mLocationCallback = object :LocationCallback(){
         override fun onLocationResult(locationresult: LocationResult) {
             val mLastLocation : Location = locationresult.lastLocation
-            val latitude = mLastLocation.latitude
-            Log.e("Current Latitude", "$latitude")
-            val longitude = mLastLocation.longitude
-            Log.e("Current Longitude", "$longitude")
+            mLatitude = mLastLocation.latitude
+            Log.e("Current Latitude", "$mLatitude")
+            mLongitude = mLastLocation.longitude
+            Log.e("Current Longitude", "$mLongitude")
             //super.onLocationResult(locationresult)
 
-            getLocationDetails(latitude,longitude)
+            getLocationDetails()
         }
 
     }
+    private fun getLocationDetails(){
+        if (Constants.isNetworkAvailable(this)){
 
-    private fun setUpUI(weatherList:WeatherResponse){
+            val retrofit: Retrofit = Retrofit.Builder()
+                .baseUrl(Constants.BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create()).build()
 
-        for(i in weatherList.weather.indices){
-            Log.i("Weather name",weatherList.weather.toString())
+            val service:WeatherService = retrofit.
+            create<WeatherService>(WeatherService::class.java)
 
-            binding?.tvMain?.text = weatherList.weather[i].main
-            binding?.tvMainDescription?.text = weatherList.weather[i].description
-            binding?.tvTemp?.text = weatherList.main.temp.toString() + getUnit(application.resources.configuration.locales.toString())
-            binding?.tvHumidity?.text = weatherList.main.humidity.toString()+" per cent"
-            binding?.tvMin?.text = weatherList.main.tempMin.toString()+" min"
-            binding?.tvMax?.text = weatherList.main.tempMax.toString() + " max"
-            binding?.tvSpeed?.text = weatherList.wind.speed.toString()
-            binding?.tvName?.text = weatherList.name
-            binding?.tvCountry?.text = weatherList.sys.country
+            val listCall: Call<WeatherResponse> = service.getWeather(
+                mLatitude, mLongitude, Constants.METRIC_UNIT,Constants.APP_ID
+            )
 
-            binding?.tvSunriseTime?.text = unixTime(weatherList.sys.sunrise)
-            binding?.tvSunsetTime?.text = unixTime(weatherList.sys.sunset)
+            showCustomProgressDialog()
 
-            when(weatherList.weather[i].icon){
-                "01d" ->  binding?.ivMain?.setImageResource(R.drawable.sunny)
-                "02d" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "03d" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "04d" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "04n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "10d" ->  binding?.ivMain?.setImageResource(R.drawable.rain)
-                "11d" ->  binding?.ivMain?.setImageResource(R.drawable.storm)
-                "13d" ->  binding?.ivMain?.setImageResource(R.drawable.snowflake)
-                "01n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "02n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "03n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "10n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
-                "11n" ->  binding?.ivMain?.setImageResource(R.drawable.rain)
-                "13n" ->  binding?.ivMain?.setImageResource(R.drawable.snowflake)
+            listCall.enqueue(object : Callback<WeatherResponse>{
+                override fun onResponse(response: Response<WeatherResponse>?, retrofit: Retrofit?) {
+                    if (response!!.isSuccess){
 
+                        hideProgressDialog()
+                        val weatherList:WeatherResponse = response.body()
+
+                        val weatherResponseJsonString = Gson().toJson(weatherList)
+                        val editor = mSharedPreferences.edit()
+                        editor.putString(Constants.WEATHER_RESPONSE_DATA,weatherResponseJsonString)
+                        editor.apply()
+                        setUpUI()
+                        Log.i("Response Result","$weatherList")
+                    }
+                    else{
+                        val rc = response.code()
+                        when(rc){
+                            400 -> {
+                                Log.e("Error 400", "Bad Connection")
+
+                            }
+                            404 -> {
+                                Log.e("Error 404", "Not Found")
+
+                            }
+                            else ->{
+                                Log.e("Error", "Generic Error")
+                            }
+                        }
+                    }
+                }
+
+                override fun onFailure(t: Throwable?) {
+                    Log.e("Error", t!!.message.toString())
+                    hideProgressDialog()
+                }
+
+            })
+
+            /*   Toast.makeText(
+                   this@MainActivity,
+                   "You have connected to the internet. Now you can make an api call",
+                   Toast.LENGTH_SHORT
+               ).show()*/
+        }
+
+        else {
+            Toast.makeText(
+                this@MainActivity,
+                "No internet connection available.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    private fun showCustomProgressDialog(){
+
+        mProgressDialog = Dialog(this)
+        mProgressDialog!!.setContentView(R.layout.dialog_custom_progress)
+        mProgressDialog!!.show()
+
+    }
+
+    private fun hideProgressDialog(){
+        if (mProgressDialog!=null){
+
+            mProgressDialog!!.dismiss()
+        }
+    }
+
+    private fun setUpUI(){
+
+        val weatherResponseJsonString = mSharedPreferences.getString(Constants.WEATHER_RESPONSE_DATA,"")
+        if (!weatherResponseJsonString.isNullOrEmpty()) {
+
+            val weatherList = Gson().fromJson(weatherResponseJsonString,WeatherResponse::class.java)
+            for(i in weatherList.weather.indices){
+                Log.i("Weather name",weatherList.weather.toString())
+
+                binding?.tvMain?.text = weatherList.weather[i].main
+                binding?.tvMainDescription?.text = weatherList.weather[i].description
+                binding?.tvTemp?.text = weatherList.main.temp.toString() + getUnit(application.resources.configuration.locales.toString())
+                binding?.tvHumidity?.text = weatherList.main.humidity.toString()+" per cent"
+                binding?.tvMin?.text = weatherList.main.tempMin.toString()+" min"
+                binding?.tvMax?.text = weatherList.main.tempMax.toString() + " max"
+                binding?.tvSpeed?.text = weatherList.wind.speed.toString()
+                binding?.tvName?.text = weatherList.name
+                binding?.tvCountry?.text = weatherList.sys.country
+
+                binding?.tvSunriseTime?.text = unixTime(weatherList.sys.sunrise)
+                binding?.tvSunsetTime?.text = unixTime(weatherList.sys.sunset)
+
+                when(weatherList.weather[i].icon){
+                    "01d" ->  binding?.ivMain?.setImageResource(R.drawable.sunny)
+                    "02d" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "03d" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "04d" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "04n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "10d" ->  binding?.ivMain?.setImageResource(R.drawable.rain)
+                    "11d" ->  binding?.ivMain?.setImageResource(R.drawable.storm)
+                    "13d" ->  binding?.ivMain?.setImageResource(R.drawable.snowflake)
+                    "01n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "02n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "03n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "10n" ->  binding?.ivMain?.setImageResource(R.drawable.cloud)
+                    "11n" ->  binding?.ivMain?.setImageResource(R.drawable.rain)
+                    "13n" ->  binding?.ivMain?.setImageResource(R.drawable.snowflake)
+
+
+                }
 
             }
-
         }
+
+
 
     }
 
